@@ -24,7 +24,7 @@ from .watermark_core import watermark_embedding, watermark_extraction
 from .file_operations import read_obj_vertices, save_obj_with_new_vertices, create_obj_str_with_new_vertices
 
 # 从 utils 导入工具函数
-from .utils import generate_fixed_seed_watermark, read_watermark_from_bin, calculate_rmse
+from .utils import generate_fixed_seed_watermark, read_watermark_from_bin, calculate_rmse, string_to_binary, binary_to_string
 
 # 从 robustness 导入鲁棒性测试
 from .robustness import attack_rotation, attack_scaling, attack_translation, attack_clipping, attack_noise, attack_smoothing, attack_simplification, attack_vertex_reordering, test_multiple_attacks
@@ -45,6 +45,8 @@ __all__ = [
     # 工具函数
     'generate_fixed_seed_watermark',
     'read_watermark_from_bin',
+    'string_to_binary',
+    'binary_to_string',
     
     # 主函数
     'main',
