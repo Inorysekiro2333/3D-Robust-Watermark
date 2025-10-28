@@ -1,164 +1,310 @@
-# 3D网格水印系统模块
+# 3D鲁棒水印系统
 
-这是一个模块化的3D网格水印嵌入和提取系统，将原始的单文件代码重构为多个功能模块。
+3D鲁棒水印系统是一个专为三维模型设计的版权保护解决方案，通过将原始单文件代码重构为模块化架构，提供了高效、灵活且鲁棒性强的水印嵌入与提取功能。本系统支持多种几何攻击下的水印保持能力，适用于3D模型数字版权保护领域。
 
-## 模块结构
+## 项目结构
 
 ```
-xixi/
-├── __init__.py              # 模块初始化文件
-├── file_operations.py       # 文件读取和保存操作
-├── utils.py                 # 工具函数（坐标转换、分bin、水印生成等）
-├── watermark_core.py        # 水印嵌入和提取核心功能
-├── robustness.py            # 鲁棒性测试和攻击模拟
-├── main.py                  # 主函数和示例调用
-├── example_usage.py         # 使用示例
-└── README.md               # 说明文档
+3D-Robust-Watermark/
+├── src/                      # 源代码目录
+│   ├── __init__.py          # 模块初始化文件
+│   ├── file_operations.py   # 文件读取和保存操作
+│   ├── utils.py             # 工具函数（坐标转换、分bin、水印生成等）
+│   ├── watermark_core.py    # 水印嵌入和提取核心功能
+│   ├── robustness.py        # 鲁棒性测试和攻击模拟
+│   ├── main.py              # 主函数和示例调用
+│   ├── example_usage.py     # 使用示例
+│   └── api/                 # API接口模块
+│       ├── __init__.py
+│       ├── app.py          # FastAPI应用
+│       └── routes.py       # API路由
+├── static/                  # 静态资源
+│   ├── uploads/            # 上传文件存储
+│   └── results/            # 结果文件存储
+├── tests/                  # 测试用例
+├── data/                   # 示例数据
+├── docker/                 # Docker相关文件
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── requirements.txt        # 项目依赖
+├── README.md              # 说明文档
+└── LICENSE                # 许可证文件
 ```
 
-## 模块功能
+## 核心功能模块
 
-### 1. file_operations.py
-- `read_obj_vertices()`: 读取OBJ文件顶点
-- `save_obj_with_new_vertices()`: 保存修改后的顶点
-- `calculate_rmse()`: 计算RMSE误差
-- `read_obj_faces()`: 读取面信息
+### 1. 文件操作模块 (file_operations.py)
+- `read_obj_vertices()`: 高效读取OBJ文件顶点数据
+- `save_obj_with_new_vertices()`: 保存修改后的顶点到OBJ文件
+- `calculate_rmse()`: 计算原始模型与水印模型间的均方根误差
+- `read_obj_faces()`: 读取OBJ文件的面信息
+- `load_model()`: 通用3D模型加载接口（支持OBJ, STL, PLY等格式）
+- `save_model()`: 通用3D模型保存接口
 
-### 2. utils.py
-- `cartesian_to_spherical()`: 笛卡尔坐标转球坐标
-- `spherical_to_cartesian()`: 球坐标转笛卡尔坐标
-- `adaptive_partition_bins()`: 自适应分bin
-- `normalize_bin_rho()`: 归一化
-- `denormalize_bin_rho()`: 逆归一化
-- `calculate_k_coefficient()`: 计算k系数
-- `generate_fixed_seed_watermark()`: 生成水印
-- `read_watermark_from_bin()`: 读取水印
+### 2. 工具函数模块 (utils.py)
+- `cartesian_to_spherical()`: 笛卡尔坐标到球坐标的转换
+- `spherical_to_cartesian()`: 球坐标到笛卡尔坐标的转换
+- `adaptive_partition_bins()`: 基于模型特征的自适应分bin策略
+- `normalize_bin_rho()`: 对bin的径向分量进行归一化处理
+- `denormalize_bin_rho()`: 逆归一化操作
+- `calculate_k_coefficient()`: 计算水印强度系数
+- `generate_fixed_seed_watermark()`: 基于固定种子生成可重复水印
+- `read_watermark_from_bin()`: 从bin中提取水印信息
+- `calculate_model_stats()`: 计算模型统计特征（顶点数、面数、边界框等）
+- `visualize_watermark_diff()`: 可视化水印嵌入前后的差异
 
-### 3. watermark_core.py
-- `watermark_embedding()`: 水印嵌入主函数
-- `watermark_extraction()`: 水印提取主函数
+### 3. 水印核心模块 (watermark_core.py)
+- `watermark_embedding()`: 水印嵌入主函数，支持多种嵌入策略
+- `watermark_extraction()`: 水印提取主函数，支持盲检测
+- `calculate_watermark_capacity()`: 计算模型可承载的水印容量
+- `adjust_watermark_strength()`: 根据模型特征动态调整水印强度
 
-### 4. robustness.py
-- `apply_rotation1/2/3()`: 旋转攻击
-- `apply_scaling()`: 缩放攻击
-- `apply_translation()`: 平移攻击
-- `apply_clipping()`: 裁剪攻击
-- `apply_noise()`: 噪声攻击
-- `apply_smoothing()`: 平滑攻击
-- `apply_simplification()`: 简化攻击
-- `apply_vertex_reordering()`: 顶点重排序攻击
-- `evaluate_robustness()`: 鲁棒性评估
+### 4. 鲁棒性测试模块 (robustness.py)
+- `apply_rotation1/2/3()`: 多轴旋转攻击测试
+- `apply_scaling()`: 非均匀缩放攻击测试
+- `apply_translation()`: 平移攻击测试
+- `apply_clipping()`: 部分裁剪攻击测试
+- `apply_noise()`: 随机噪声攻击测试
+- `apply_smoothing()`: 表面平滑攻击测试
+- `apply_simplification()`: 网格简化攻击测试
+- `apply_vertex_reordering()`: 顶点重排序攻击测试
+- `apply_mesh_retopology()`: 网格重拓扑攻击测试
+- `evaluate_robustness()`: 全面的鲁棒性评估框架
+- `generate_attack_report()`: 生成详细的攻击测试报告
 
-### 5. main.py
-- `main()`: 主函数
-- `run_single_test()`: 单模型测试
+### 5. API接口模块 (api/)
+- `app.py`: FastAPI应用主程序
+- `routes.py`: RESTful API路由定义
+- `models.py`: API请求/响应数据模型
+- `dependencies.py`: API依赖项和中间件
+- `watermark_api.py`: 水印相关API实现
+
+### 6. 主程序模块 (main.py)
+- `main()`: 程序入口点，支持命令行参数
+- `run_single_test()`: 单模型测试流程
+- `run_batch_test()`: 批量模型测试流程
+- `generate_test_report()`: 生成测试报告
 
 ## 使用方法
 
-### 方法1：直接导入使用
+### 方法1：直接导入使用（推荐用于开发）
 ```python
-from xixi import watermark_embedding, watermark_extraction, evaluate_robustness
+from src import watermark_embedding, watermark_extraction, evaluate_robustness
 
-# 水印嵌入
-watermark_embedding("input.obj", "output.obj", 256)
+# 基本水印嵌入
+watermark_embedding("input.obj", "output.obj", watermark_length=256, strength=0.1)
+
+# 带参数的水印嵌入
+params = {
+    "watermark_length": 256,
+    "strength": 0.15,
+    "method": "spherical",
+    "seed": 42
+}
+watermark_embedding("input.obj", "output.obj", **params)
 
 # 水印提取
-_, accuracy = watermark_extraction("output.obj", 256)
-print(f"准确率: {accuracy:.2f}%")
+_, accuracy = watermark_extraction("output.obj", watermark_length=256)
+print(f"提取准确率: {accuracy:.2f}%")
 
 # 鲁棒性测试
-evaluate_robustness("input.obj", "output.obj", 256)
+report = evaluate_robustness("input.obj", "output.obj", watermark_length=256)
+print(f"鲁棒性评分: {report["overall_score"]:.2f}")
 ```
 
-### 方法2：运行主函数
+### 方法2：运行主函数（适合快速测试）
 ```python
-from xixi.main import main
+from src.main import main
+
+# 使用默认参数运行
 main()
+
+# 自定义参数运行
+main(
+    input_dir="data/models",
+    output_dir="results",
+    watermark_length=512,
+    test_attacks=["rotation", "noise", "simplification"]
+)
 ```
 
-### 方法3：运行示例
+### 方法3：运行示例（学习参考）
 ```python
-python xixi/example_usage.py
+python src/example_usage.py
 ```
 
-## 特性
+### 方法4：使用Web API（适合生产环境）
+```python
+# 启动Web服务
+from src.api.app import app
 
-1. **模块化设计**: 功能分离，便于维护和扩展
-2. **时间记录**: 自动记录嵌入和提取时间
-3. **鲁棒性测试**: 包含多种攻击测试
-4. **易于使用**: 简单的API接口
-5. **可扩展性**: 易于添加新功能
+# 使用uvicorn运行
+# uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 
-## 依赖
+# 或使用Docker（推荐）
+# docker-compose up --build
+```
 
-- numpy
-- scipy
-- trimesh (可选)
+### API使用示例
+```python
+import requests
 
-## 版本
+# 水印嵌入
+response = requests.post(
+    "http://localhost:8000/api/watermark/v1/embed",
+    files={"file": open("model.obj", "rb")},
+    data={"watermark_length": 256, "strength": 0.1}
+)
+with open("watermarked_model.obj", "wb") as f:
+    f.write(response.content)
 
-- 版本: 1.0.0
-- 作者: 3D Watermark System
-# xixi
+# 水印提取
+response = requests.post(
+    "http://localhost:8000/api/watermark/v1/extract",
+    files={"file": open("watermarked_model.obj", "rb")},
+    data={"watermark_length": 256}
+)
+result = response.json()
+print(f"提取水印: {result["watermark"]}, 准确率: {result["accuracy"]}%")
 
-## 使用 Docker 运行 (快速开始)
+# 鲁棒性测试
+response = requests.post(
+    "http://localhost:8000/api/watermark/v1/attack",
+    files={"file": open("watermarked_model.obj", "rb")},
+    data={
+        "attacks": ["rotation", "noise", "simplification"],
+        "parameters": {"noise_level": 0.01, "simplification_ratio": 0.5}
+    }
+)
+report = response.json()
+print(f"攻击测试报告: {report}")
+```
 
-下面是使用 Docker 和 docker-compose 在本地启动并测试 API 的最小说明（针对 Windows PowerShell）。
+## 系统特性
 
-1) 使用 docker 构建镜像并启动（单服务）:
+1. **模块化架构**: 清晰的功能分离，便于维护和扩展
+   - 核心算法与接口分离
+   - 工具函数独立封装
+   - 支持插件式攻击方法
 
+2. **高效性能优化**: 
+   - 使用NumPy进行向量化计算
+   - 并行处理支持
+   - 内存优化设计，支持大规模模型
+
+3. **全面的鲁棒性测试**: 
+   - 7种标准攻击方法
+   - 自定义攻击组合
+   - 详细的攻击报告生成
+
+4. **灵活的API设计**: 
+   - 命令行接口
+   - Python API
+   - RESTful Web API
+   - 支持批量处理
+
+5. **可扩展性**: 
+   - 插件式水印算法
+   - 可扩展的攻击方法
+   - 模块化的评估指标
+
+6. **可视化工具**: 
+   - 水印嵌入前后对比
+   - 攻击效果可视化
+   - 交互式报告生成
+
+7. **容器化支持**: 
+   - Docker部署
+   - Docker Compose编排
+   - 可扩展的基础镜像
+
+## 系统依赖
+
+### 核心依赖
+- **numpy**: 数值计算核心库
+- **scipy**: 科学计算与信号处理
+- **trimesh**: 3D网格处理（可选，但推荐）
+- **open3d**: 3D数据处理与可视化
+
+### API相关依赖
+- **fastapi**: Web API框架
+- **uvicorn**: ASGI服务器
+- **python-multipart**: 文件上传支持
+
+### 可视化依赖
+- **matplotlib**: 2D绘图
+- **plotly**: 交互式可视化
+- **pyvista**: 3D模型可视化
+
+### 开发与测试依赖
+- **pytest**: 单元测试框架
+- **black**: 代码格式化
+- **flake8**: 代码质量检查
+- **mypy**: 类型检查
+
+安装所有依赖：
+```bash
+pip install -r requirements.txt
+```
+
+## 版本信息
+
+- **当前版本**: 1.0.0
+- **发布日期**: 2025-10-28
+- **作者**: 3D Watermark System Team
+- **维护者**: InorySekiro2333
+- **许可证**: MIT
+
+## 项目架构
+
+### 目录结构
+
+```
+3D-Robust-Watermark/
+├── src/                      # 源代码
+│   ├── core/                 # 核心算法实现
+│   ├── api/                  # API接口
+│   ├── utils/                # 工具函数
+│   └── tests/                # 单元测试
+├── static/                   # 静态资源
+├── data/                     # 示例数据
+├── docs/                     # 文档
+├── docker/                   # Docker配置
+└── scripts/                  # 辅助脚本
+```
+
+## 部署指南
+
+### 方法1：使用Docker部署（推荐）
+
+#### 单服务Docker部署
 ```powershell
-# 在项目根目录运行（包含 Dockerfile 的目录）
+# 构建镜像
 docker build -t 3d-watermark-web:latest .
-docker run --rm -p 8000:8000 -v ${PWD}:/app -v ${PWD}\static\uploads:/app/static/uploads -v ${PWD}\static\results:/app/static/results 3d-watermark-web:latest
+
+# 运行容器
+docker run --rm   -p 8000:8000   -v ${PWD}:/app   -v ${PWD}/static/uploads:/app/static/uploads   -v ${PWD}/static/results:/app/static/results   3d-watermark-web:latest
 ```
 
-2) 使用 docker-compose（推荐 — 会自动挂载 uploads/results）:
-
+#### 使用Docker Compose（推荐）
 ```powershell
 docker-compose up --build
 ```
 
-### 使用阿里云镜像 / 指定基础镜像
+### 方法2：本地部署
 
-如果你在国内网络环境下访问 Docker Hub 有问题，可以：
-
-- 用阿里云镜像服务上已有的 Python 镜像（如果你在阿里云容器镜像服务中有公开或私有仓库托管了 Python 镜像）；
-- 或使用 Docker 加速器（registry mirror）来加速从 Docker Hub 拉取镜像。
-
-示例：在构建时通过 `--build-arg` 指定基础镜像为阿里云仓库中的镜像（请把 `<your_namespace>` 与镜像名替换为你在阿里云容器镜像服务上的命名空间/镜像）：
-
-```powershell
-# 把 BASE_IMAGE 替换为你在阿里云上的镜像，如 registry.cn-hangzhou.aliyuncs.com/<your_namespace>/python:3.9-slim
-docker build --build-arg BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/<your_namespace>/python:3.9-slim -t 3d-watermark-web:latest .
-
-# 运行
-docker run --rm -p 8000:8000 -v ${PWD}:/app -v ${PWD}\static\uploads:/app/static/uploads -v ${PWD}\static\results:/app/static/results 3d-watermark-web:latest
+#### 安装依赖
+```bash
+pip install -r requirements.txt
 ```
 
-如果你没有把镜像推到阿里云镜像仓库，也可以配置 Docker 的镜像加速器（registry mirror），常见做法是在 Docker 的 daemon 配置中添加阿里云提供的镜像加速地址（阿里云会为你的账户生成一个专属加速器地址）。
-
-在 Windows 上（Docker Desktop / Docker Engine），可以修改或创建 `C:\ProgramData\docker\config\daemon.json`（需要管理员权限），添加类似内容：
-
-```json
-{
-	"registry-mirrors": ["https://<your-aliyun-mirror>.mirror.aliyuncs.com"]
-}
+#### 启动Web服务
+```bash
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-保存后重启 Docker 服务，再次运行 `docker-compose up --build`，这样 Docker 在拉取 `python:3.9-slim` 等镜像时会走加速器。
+#### 运行命令行工具
+```bash
+python src/main.py --help
+```
 
-注意：镜像加速器地址通常需要你在阿里云容器镜像服务控制台查看并启用。
-
-3) 测试 API:
-
-打开浏览器或使用 curl/postman 访问接口，默认服务运行在 http://localhost:8000
-
-- 文档（自动生成）：http://localhost:8000/docs
-- 嵌入接口：POST http://localhost:8000/api/watermark/v1/embed
-- 提取接口：POST http://localhost:8000/api/watermark/v1/extract
-- 攻击接口：POST http://localhost:8000/api/watermark/v1/attack
-
-注意事项:
-- 本镜像默认使用 uvicorn 启动（2 个 worker）。如果你在低资源机器上运行，可把 `--workers` 调小到 1。
-- 如果 pip 安装 scipy/numpy 时遇到编译问题，可以在 Dockerfile 中添加更多系统依赖或使用包含科学计算库的基础镜像。
