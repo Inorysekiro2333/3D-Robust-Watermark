@@ -237,3 +237,27 @@ def bit_accuracy(w_in: str, w_out: str) -> float:
         raise ValueError("输入串长度必须相同")
     matches = sum(a == b for a, b in zip(w_in, w_out))
     return matches / len(w_in)
+
+def caculate_psnr(vertices_original, vertices_watermarked):
+    """计算原始模型与含水印模型的顶点坐标PSNR"""
+    if len(vertices_original) != len(vertices_watermarked):
+        raise ValueError("原始模型与含水印模型顶点数必须一致")
+    mse = np.mean((vertices_original - vertices_watermarked) ** 2)
+    if mse == 0:
+        return float('inf')  # 完全相同
+    max_pixel = np.max(vertices_original)
+    psnr = 20 * np.log10(max_pixel / np.sqrt(mse))
+    return psnr
+
+def caculate_hausdorff(vertices_original, vertices_watermarked):
+    """计算原始模型与含水印模型的顶点坐标Hausdorff距离"""
+    from scipy.spatial import cKDTree
+
+    tree_original = cKDTree(vertices_original)
+    tree_watermarked = cKDTree(vertices_watermarked)
+
+    distances_original_to_watermarked, _ = tree_original.query(vertices_watermarked)
+    distances_watermarked_to_original, _ = tree_watermarked.query(vertices_original)
+
+    hausdorff_distance = max(np.max(distances_original_to_watermarked), np.max(distances_watermarked_to_original))
+    return hausdorff_distance
