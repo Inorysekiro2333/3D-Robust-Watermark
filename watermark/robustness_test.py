@@ -357,9 +357,9 @@ if __name__ == "__main__":
         {"func": attack_vertex_reordering, "params": {}}
     ]
     
-    watermarked_obj = "static/results/watermarked_models/aobin.obj"
+    watermarked_obj = "static/results/watermarked_models/shuitun_watermarked_equal_frequency.obj"
     output_path = "static/results/attacted_models"
-    original_watermark_string = "测试水印1"  # 原始水印字符串
+    original_watermark_string = "你是谁？哈哈"  # 原始水印字符串
     
     attacked_files, robustness_results = test_multiple_attacks(
         attacks_list, watermarked_obj, output_path, original_watermark_string, test_robustness_flag=True

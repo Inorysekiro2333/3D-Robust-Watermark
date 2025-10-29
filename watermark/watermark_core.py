@@ -13,12 +13,20 @@ from .utils import (
 )
 
 
-def watermark_embedding(original_obj_path,watermark,N=256):
-    """水印嵌入主函数"""
-    start_time = time.time()
-    print(f"开始水印嵌入...")
+def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equal_frequency"):
+    """
+    水印嵌入主函数
     
-    vertices, original_vertex_count ,file_name= read_obj_vertices(original_obj_path)
+    参数:
+        original_obj_path: str, 原始3D模型路径
+        watermark: np.array, 水印比特序列
+        N: int, 水印比特数
+        binning_method: str, 分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计)
+    """
+    start_time = time.time()
+    print(f"开始水印嵌入，使用{binning_method}分bin方法...")
+    
+    vertices, original_vertex_count, file_name = read_obj_vertices(original_obj_path)
     L = original_vertex_count
     
     if L < N:
@@ -28,7 +36,11 @@ def watermark_embedding(original_obj_path,watermark,N=256):
     centroid = np.mean(vertices, axis=0)
     rho, theta, phi = cartesian_to_spherical(vertices, centroid)
     try:
-        rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N)
+        rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N, method=binning_method)
+        
+        # 打印每个bin的顶点数统计，用于评估分bin效果
+        bin_counts = [len(indices) for indices in bin_indices]
+        print(f"分bin统计: 最小={min(bin_counts)}顶点, 最大={max(bin_counts)}顶点, 平均={np.mean(bin_counts):.1f}顶点")
     except Exception as e:
         print(f"自适应分bin失败：{str(e)}")
         exit(1)
@@ -56,22 +68,33 @@ def watermark_embedding(original_obj_path,watermark,N=256):
     
     end_time = time.time()
     elapsed_time = end_time - start_time
-    rmse=calculate_rmse(vertices, new_vertices)
-    file_name_new=file_name.replace(".obj","_watermarked.obj")
+    rmse = calculate_rmse(vertices, new_vertices)
+    file_name_new = file_name.replace(".obj", f"_watermarked_{binning_method}.obj")
     
     return file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse
 
-def watermark_extraction(watermarked_obj_path, N=256):
-    """水印提取主函数"""
-    start_time = time.time()
-    print(f"开始水印提取...")
+def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_frequency"):
+    """
+    水印提取主函数
     
-    vertices, _ ,_= read_obj_vertices(watermarked_obj_path)
+    参数:
+        watermarked_obj_path: str, 带水印3D模型路径
+        N: int, 水印比特数
+        binning_method: str, 分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计)
+    """
+    start_time = time.time()
+    print(f"开始水印提取，使用{binning_method}分bin方法...")
+    
+    vertices, _, _ = read_obj_vertices(watermarked_obj_path)
     centroid = np.mean(vertices, axis=0)
     rho, _, _ = cartesian_to_spherical(vertices, centroid)
     
     try:
-        rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N)
+        rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N, method=binning_method)
+        
+        # 打印每个bin的顶点数统计，用于评估分bin效果
+        bin_counts = [len(indices) for indices in bin_indices]
+        print(f"提取时分bin统计: 最小={min(bin_counts)}顶点, 最大={max(bin_counts)}顶点, 平均={np.mean(bin_counts):.1f}顶点")
     except Exception as e:
         print(f"提取时自适应分bin失败：{str(e)}")
         return np.array([]), 0.0
@@ -99,10 +122,30 @@ def watermark_extraction(watermarked_obj_path, N=256):
 if __name__ == "__main__":
     # 测试水印嵌入
     watermark = string_to_binary("我直接哈哈哈哈哈哈哈哈哈哈", target_length=256)
-    file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse = watermark_embedding("3D_models/aobin.obj", watermark)
+    
+    # 使用等频分bin方法（默认）
+    file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse = watermark_embedding(
+        "static/uploads/aobin.obj", watermark, binning_method="equal_frequency"
+    )
     
     print(f"原始文件名: {file_name}")
     print(f"水印后文件名: {file_name_new}")
     print(f"嵌入时间: {elapsed_time:.4f} 秒")
     print(f"RMSE: {rmse:.6f}")
     print(f"水印长度: {len(watermark)} 位")
+
+    # 测试水印提取
+    extracted = watermark_extraction(file_name_new, N=256, binning_method="equal_frequency")
+    print(f"提取水印: {extracted}")
+    accuracy = np.mean(extracted == watermark) * 100 if len(extracted) == len(watermark) else 0.0
+    print(f"提取准确率: {accuracy:.2f}%")
+    
+    # 也可以尝试KDE自适应分bin
+    # file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse = watermark_embedding(
+    #     "3D_models/aobin.obj", watermark, binning_method="kde"
+    # )
+    # print(f"原始文件名: {file_name}")
+    # print(f"水印后文件名: {file_name_new}")
+    # print(f"嵌入时间: {elapsed_time:.4f} 秒")
+    # print(f"RMSE: {rmse:.6f}")
+    # print(f"水印长度: {len(watermark)} 位")

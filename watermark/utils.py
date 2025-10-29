@@ -31,9 +31,39 @@ def spherical_to_cartesian(rho, theta, phi, centroid):
     return np.column_stack((x, y, z))
 
 
-def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95):
+def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_frequency"):
     """
-    自适应等量分 bin（基于分位数密集区间）
+    自适应分 bin 方法
+    
+    参数:
+        rho: np.array，顶点球坐标模长
+        N: int，目标分 bin 数
+        low_q, high_q: float，去除尾部稀疏点的分位数
+        method: str，分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计)
+    
+    返回:
+        final_bin: list of list，每个 bin 内的原始索引
+        bin_rho_min: list，每个 bin 的最小 rho
+        bin_rho_max: list，每个 bin 的最大 rho
+    """
+    rho = np.asarray(rho, dtype=np.float64)
+    L = len(rho)
+    if L < N:
+        raise ValueError(f"顶点数 {L} < 分 bin 数 N={N}，无法分箱")
+    
+    if method == "equal_width":
+        return equal_width_binning(rho, N, low_q, high_q)
+    elif method == "equal_frequency":
+        return equal_frequency_binning(rho, N, low_q, high_q)
+    elif method == "kde":
+        return kde_adaptive_binning(rho, N, low_q, high_q)
+    else:
+        raise ValueError(f"不支持的分bin方法: {method}，可选: equal_width, equal_frequency, kde")
+
+
+def equal_width_binning(rho, N=256, low_q=0.05, high_q=0.95):
+    """
+    等宽分 bin（基于分位数密集区间）
     
     参数:
         rho: np.array，顶点球坐标模长
@@ -45,18 +75,60 @@ def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95):
         bin_rho_min: list，每个 bin 的最小 rho
         bin_rho_max: list，每个 bin 的最大 rho
     """
-    rho = np.asarray(rho, dtype=np.float64)
-    L = len(rho)
-    if L < N:
-        raise ValueError(f"顶点数 {L}={L} < 分 bin 数 N={N}，无法分箱")
-    
     # 1️⃣ 计算密集区间
     dense_r_min, dense_r_max = np.quantile(rho, [low_q, high_q])
     mask_dense = (rho >= dense_r_min) & (rho <= dense_r_max)
     r_dense = rho[mask_dense]
     idx_dense = np.where(mask_dense)[0]
 
-    # 2️⃣ 排序，等量分 bin
+    # 2️⃣ 等宽分 bin
+    bin_width = (dense_r_max - dense_r_min) / N
+    final_bin = [[] for _ in range(N)]
+    bin_rho_min = []
+    bin_rho_max = []
+
+    # 为每个点分配bin
+    for i, (r, idx) in enumerate(zip(r_dense, idx_dense)):
+        bin_idx = min(int((r - dense_r_min) / bin_width), N-1)
+        final_bin[bin_idx].append(idx)
+    
+    # 计算每个bin的最小最大值
+    for i in range(N):
+        indices = final_bin[i]
+        if len(indices) > 0:
+            bin_rho_min.append(float(np.min(rho[indices])))
+            bin_rho_max.append(float(np.max(rho[indices])))
+        else:
+            # 空bin处理
+            bin_min = dense_r_min + i * bin_width
+            bin_max = dense_r_min + (i + 1) * bin_width
+            bin_rho_min.append(float(bin_min))
+            bin_rho_max.append(float(bin_max))
+    
+    return rho, final_bin, bin_rho_min, bin_rho_max
+
+
+def equal_frequency_binning(rho, N=256, low_q=0.05, high_q=0.95):
+    """
+    等频分 bin（每个bin包含相近数量的顶点）
+    
+    参数:
+        rho: np.array，顶点球坐标模长
+        N: int，目标分 bin 数
+        low_q, high_q: float，去除尾部稀疏点的分位数
+    
+    返回:
+        final_bin: list of list，每个 bin 内的原始索引
+        bin_rho_min: list，每个 bin 的最小 rho
+        bin_rho_max: list，每个 bin 的最大 rho
+    """
+    # 1️⃣ 计算密集区间
+    dense_r_min, dense_r_max = np.quantile(rho, [low_q, high_q])
+    mask_dense = (rho >= dense_r_min) & (rho <= dense_r_max)
+    r_dense = rho[mask_dense]
+    idx_dense = np.where(mask_dense)[0]
+
+    # 2️⃣ 排序，等频分 bin
     sorted_order = np.argsort(r_dense)
     sorted_r = r_dense[sorted_order]
     sorted_idx = idx_dense[sorted_order]
@@ -80,10 +152,86 @@ def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95):
             bin_rho_min.append(float(np.min(rho[indices])))
             bin_rho_max.append(float(np.max(rho[indices])))
         else:
-            bin_rho_min.append(float(sorted_r[start]))
-            bin_rho_max.append(float(sorted_r[start]))
+            bin_rho_min.append(float(sorted_r[start]) if start < len(sorted_r) else dense_r_min)
+            bin_rho_max.append(float(sorted_r[start]) if start < len(sorted_r) else dense_r_max)
         start = end
 
+    return rho, final_bin, bin_rho_min, bin_rho_max
+
+
+def kde_adaptive_binning(rho, N=256, low_q=0.05, high_q=0.95):
+    """
+    基于核密度估计(KDE)的自适应分bin
+    
+    参数:
+        rho: np.array，顶点球坐标模长
+        N: int，目标分 bin 数
+        low_q, high_q: float，去除尾部稀疏点的分位数
+    
+    返回:
+        final_bin: list of list，每个 bin 内的原始索引
+        bin_rho_min: list，每个 bin 的最小 rho
+        bin_rho_max: list，每个 bin 的最大 rho
+    """
+    from scipy.stats import gaussian_kde
+    
+    # 1️⃣ 计算密集区间
+    dense_r_min, dense_r_max = np.quantile(rho, [low_q, high_q])
+    mask_dense = (rho >= dense_r_min) & (rho <= dense_r_max)
+    r_dense = rho[mask_dense]
+    idx_dense = np.where(mask_dense)[0]
+    
+    if len(r_dense) < 10:  # KDE需要足够的样本
+        return equal_frequency_binning(rho, N, low_q, high_q)
+    
+    # 2️⃣ 计算KDE
+    try:
+        kde = gaussian_kde(r_dense)
+        
+        # 3️⃣ 根据密度定义bin边界
+        # 在密集区间内均匀采样点
+        x_eval = np.linspace(dense_r_min, dense_r_max, 1000)
+        density = kde(x_eval)
+        
+        # 计算累积密度
+        cum_density = np.cumsum(density)
+        cum_density = cum_density / cum_density[-1]  # 归一化到[0,1]
+        
+        # 根据累积密度等分N个bin
+        bin_edges = np.zeros(N+1)
+        bin_edges[0] = dense_r_min
+        bin_edges[-1] = dense_r_max
+        
+        for i in range(1, N):
+            # 找到累积密度为i/N的点
+            target = i / N
+            idx = np.argmin(np.abs(cum_density - target))
+            bin_edges[i] = x_eval[idx]
+    except Exception as e:
+        print(f"KDE计算失败: {str(e)}，回退到等频分bin")
+        return equal_frequency_binning(rho, N, low_q, high_q)
+    
+    # 4️⃣ 根据bin边界分配点
+    final_bin = [[] for _ in range(N)]
+    for i, (r, idx) in enumerate(zip(r_dense, idx_dense)):
+        # 找到点所在的bin
+        bin_idx = np.searchsorted(bin_edges, r) - 1
+        bin_idx = max(0, min(bin_idx, N-1))  # 确保索引在有效范围内
+        final_bin[bin_idx].append(idx)
+    
+    # 5️⃣ 计算每个bin的最小最大值
+    bin_rho_min = []
+    bin_rho_max = []
+    for i in range(N):
+        indices = final_bin[i]
+        if len(indices) > 0:
+            bin_rho_min.append(float(np.min(rho[indices])))
+            bin_rho_max.append(float(np.max(rho[indices])))
+        else:
+            # 空bin处理
+            bin_rho_min.append(float(bin_edges[i]))
+            bin_rho_max.append(float(bin_edges[i+1]))
+    
     return rho, final_bin, bin_rho_min, bin_rho_max
 
 
