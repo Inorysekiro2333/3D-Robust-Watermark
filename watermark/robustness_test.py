@@ -108,7 +108,7 @@ def attack_smoothing(obj_path, iterations=5, lambda_=0.03, output_path=None):
     n = len(vertices)
     adjacency = [[] for _ in range(n)]
     for face in faces:
-        face = [v - 1 for v in face]
+        # 面片已经是0索引，不需要再减1
         for i in range(len(face)):
             v1, v2 = face[i], face[(i + 1) % len(face)]
             if v2 not in adjacency[v1]:
@@ -347,19 +347,21 @@ def test_multiple_attacks(attacks_list, watermarked_obj, output_path="", origina
 if __name__ == "__main__":
     attacks_list = [
         {"func": attack_rotation, "params": {"angles": 30}},
-        {"func": attack_rotation, "params": {"angles": 45}},
+        # {"func": attack_rotation, "params": {"angles": 45}},
         {"func": attack_scaling, "params": {"scale": 1.5}},
         {"func": attack_translation, "params": {"offset": (0.5, -0.3, 0.2)}},
         {"func": attack_clipping, "params": {"ratio": 0.1}},
+        {"func": attack_clipping, "params": {"ratio": 0.2}},
+        {"func": attack_clipping, "params": {"ratio": 0.3}},
         {"func": attack_noise, "params": {"sigma_ratio": 0.001}},
         {"func": attack_smoothing, "params": {"iterations": 5, "lambda_": 0.03}},
         {"func": attack_simplification, "params": {"reduction": 0.5}},
         {"func": attack_vertex_reordering, "params": {}}
     ]
     
-    watermarked_obj = "static/results/watermarked_models/shuitun_watermarked_equal_frequency.obj"
+    watermarked_obj = "static/results/watermarked_models/long_watermarked_equal_width.obj"
     output_path = "static/results/attacted_models"
-    original_watermark_string = "你是谁？哈哈"  # 原始水印字符串
+    original_watermark_string = "gzhu123321"  # 原始水印字符串
     
     attacked_files, robustness_results = test_multiple_attacks(
         attacks_list, watermarked_obj, output_path, original_watermark_string, test_robustness_flag=True

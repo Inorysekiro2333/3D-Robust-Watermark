@@ -409,3 +409,63 @@ def caculate_hausdorff(vertices_original, vertices_watermarked):
 
     hausdorff_distance = max(np.max(distances_original_to_watermarked), np.max(distances_watermarked_to_original))
     return hausdorff_distance
+
+def geometric_median(vertices, weights=None, eps=1e-6, max_iter=200, tol=1e-6):
+    """
+    Compute geometric median (Weiszfeld algorithm) for points `vertices`.
+    - vertices: np.ndarray, shape (N, d)
+    - weights: optional array shape (N,), non-negative; if None, equal weights used
+    - eps: small regularization to avoid division by zero (used only to detect exact matches)
+    - max_iter: maximum iterations
+    - tol: convergence tolerance on change in position (L2 norm)
+    Returns: np.ndarray shape (d,)
+    """
+    vertices = np.asarray(vertices, dtype=float)
+    if vertices.ndim != 2:
+        raise ValueError("vertices must be 2D array shape (N,d)")
+
+    N, d = vertices.shape
+    if N == 0:
+        raise ValueError("empty vertex set")
+
+    if weights is None:
+        w = np.ones(N, dtype=float)
+    else:
+        w = np.asarray(weights, dtype=float)
+        if w.shape[0] != N:
+            raise ValueError("weights length must equal number of vertices")
+        if np.any(w < 0):
+            raise ValueError("weights must be non-negative")
+
+    # Good initialization: use weighted mean (fast) -- better than random
+    y = np.sum(vertices * w[:, None], axis=0) / np.sum(w)
+
+    for it in range(max_iter):
+        # distances from current estimate to each point
+        diff = vertices - y  # (N, d)
+        dist = np.linalg.norm(diff, axis=1)  # (N,)
+
+        # Check if y coincides (within eps) with one of the vertices
+        zero_mask = dist < eps
+        if np.any(zero_mask):
+            # If y is exactly at a data point v_j, that data point is the geometric median
+            # for positive weights and all others nonnegative; return it (weighted choice)
+            # But safer: return the weighted average of coincident points
+            return np.sum(vertices[zero_mask] * w[zero_mask, None], axis=0) / np.sum(w[zero_mask])
+
+        # Compute Weiszfeld numerator and denominator: vectorized, guarded against zeros
+        inv_dist = w / dist  # (N,)
+        numerator = np.sum(vertices * inv_dist[:, None], axis=0)  # (d,)
+        denominator = np.sum(inv_dist)
+
+        y_new = numerator / denominator
+
+        # Convergence check
+        if np.linalg.norm(y_new - y) < tol:
+            return y_new
+
+        y = y_new
+
+    # If not converged, return last estimate (optionally fallback to mean)
+    # You may want to log a warning in production code
+    return y

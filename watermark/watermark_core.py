@@ -9,11 +9,12 @@ from .file_operations import read_obj_vertices, save_obj_with_new_vertices, crea
 from .utils import (
     calculate_rmse, cartesian_to_spherical, spherical_to_cartesian, adaptive_partition_bins,
     normalize_bin_rho, denormalize_bin_rho, calculate_k_coefficient,
-    generate_fixed_seed_watermark, read_watermark_from_bin, string_to_binary
+    generate_fixed_seed_watermark, read_watermark_from_bin, string_to_binary,
+    geometric_median
 )
 
 
-def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equal_frequency"):
+def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equal_width"):
     """
     水印嵌入主函数
     
@@ -34,6 +35,7 @@ def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equ
         exit(1)
     
     centroid = np.mean(vertices, axis=0)
+    # centroid = geometric_median(vertices)
     rho, theta, phi = cartesian_to_spherical(vertices, centroid)
     try:
         rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N, method=binning_method)
@@ -73,7 +75,7 @@ def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equ
     
     return file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse
 
-def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_frequency"):
+def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_width"):
     """
     水印提取主函数
     
@@ -87,6 +89,7 @@ def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_freq
     
     vertices, _, _ = read_obj_vertices(watermarked_obj_path)
     centroid = np.mean(vertices, axis=0)
+    # centroid = geometric_median(vertices)
     rho, _, _ = cartesian_to_spherical(vertices, centroid)
     
     try:

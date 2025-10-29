@@ -63,7 +63,9 @@ def read_obj_faces(obj_path):
                 parts = line.split()
                 face = [int(p.split('/')[0]) - 1 for p in parts[1:]]  # 转换为0索引
                 faces.append(face)
-    return np.array(faces, dtype=np.int32) if faces else np.array([], dtype=np.int32)
+    
+    # 不直接转换为NumPy数组，而是返回列表，避免不同长度面片导致的错误
+    return faces
 
 
 def create_obj_str_with_new_vertices(original_obj_path, new_vertices):
