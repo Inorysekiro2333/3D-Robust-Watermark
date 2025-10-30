@@ -31,7 +31,7 @@ def spherical_to_cartesian(rho, theta, phi, centroid):
     return np.column_stack((x, y, z))
 
 
-def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_frequency"):
+def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_width"):
     """
     自适应分 bin 方法
     
