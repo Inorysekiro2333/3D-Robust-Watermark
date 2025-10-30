@@ -34,8 +34,8 @@ def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equ
         print(f"错误：顶点数{L} < 水印位数{N}")
         exit(1)
     
-    centroid = np.mean(vertices, axis=0)
-    # centroid = geometric_median(vertices)
+    # centroid = np.mean(vertices, axis=0)
+    centroid = geometric_median(vertices)
     rho, theta, phi = cartesian_to_spherical(vertices, centroid)
     try:
         rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N, method=binning_method)
@@ -88,8 +88,8 @@ def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_widt
     print(f"开始水印提取，使用{binning_method}分bin方法...")
     
     vertices, _, _ = read_obj_vertices(watermarked_obj_path)
-    centroid = np.mean(vertices, axis=0)
-    # centroid = geometric_median(vertices)
+    # centroid = np.mean(vertices, axis=0)
+    centroid = geometric_median(vertices)
     rho, _, _ = cartesian_to_spherical(vertices, centroid)
     
     try:
