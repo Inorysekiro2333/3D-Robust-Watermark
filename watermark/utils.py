@@ -31,58 +31,10 @@ def spherical_to_cartesian(rho, theta, phi, centroid):
     return np.column_stack((x, y, z))
 
 
-def calculate_curvature(vertices, faces):
-    """
-    计算网格模型顶点的平均曲率
-    
-    参数:
-        vertices: np.array，顶点坐标
-        faces: np.array，面片索引
-    
-    返回:
-        curvature: np.array，每个顶点的平均曲率估计值
-    """
-    # 初始化曲率数组
-    num_vertices = vertices.shape[0]
-    curvature = np.zeros(num_vertices)
-    
-    # 计算每个顶点的相邻顶点
-    neighbors = [[] for _ in range(num_vertices)]
-    for face in faces:
-        for i in range(len(face)):
-            v1 = face[i]
-            v2 = face[(i + 1) % len(face)]
-            neighbors[v1].append(v2)
-            neighbors[v2].append(v1)
-    
-    # 去除重复的邻居顶点
-    for i in range(num_vertices):
-        neighbors[i] = list(set(neighbors[i]))
-    
-    # 计算每个顶点的平均曲率
-    for i in range(num_vertices):
-        if not neighbors[i]:
-            continue
-        
-        # 计算顶点与其邻居的平均距离
-        p = vertices[i]
-        neighbor_vertices = vertices[neighbors[i]]
-        
-        # 计算顶点到邻居的向量
-        vectors = neighbor_vertices - p
-        
-        # 计算向量的平均长度
-        avg_distance = np.mean(np.linalg.norm(vectors, axis=1))
-        
-        # 计算局部曲率估计值（基于拉普拉斯算子）
-        if avg_distance > 0:
-            laplacian = np.mean(vectors, axis=0) / avg_distance
-            curvature[i] = np.linalg.norm(laplacian)
-    
-    return curvature
 
 
-def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_frequency", vertices=None, faces=None):
+
+def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_width", vertices=None, faces=None):
     """
     自适应分 bin 方法
     
@@ -90,9 +42,9 @@ def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_f
         rho: np.array，顶点球坐标模长
         N: int，目标分 bin 数
         low_q, high_q: float，去除尾部稀疏点的分位数
-        method: str，分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计), "curvature"(曲率加权)
-        vertices: np.array，顶点坐标，仅在method="curvature"时需要
-        faces: np.array，面片索引，仅在method="curvature"时需要
+        method: str，分bin方法，目前只支持 "equal_width"(等宽)
+        vertices: np.array，顶点坐标，未使用
+        faces: np.array，面片索引，未使用
     
     返回:
         final_bin: list of list，每个 bin 内的原始索引
@@ -106,106 +58,9 @@ def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_f
     
     if method == "equal_width":
         return equal_width_binning(rho, N, low_q, high_q)
-    elif method == "equal_frequency":
-        return equal_frequency_binning(rho, N, low_q, high_q)
-    elif method == "kde":
-        return kde_adaptive_binning(rho, N, low_q, high_q)
-    elif method == "curvature":
-        if vertices is None or faces is None:
-            raise ValueError("曲率加权分bin方法需要提供vertices和faces参数")
-        return curvature_weighted_binning(rho, N, low_q, high_q, vertices, faces)
     else:
-        raise ValueError(f"不支持的分bin方法: {method}，可选: equal_width, equal_frequency, kde, curvature")
+        raise ValueError(f"不支持的分bin方法: {method}，目前只支持: equal_width")
 
-
-def curvature_weighted_binning(rho, N=256, low_q=0.05, high_q=0.95, vertices=None, faces=None):
-    """
-    基于曲率加权的自适应分bin方法
-    
-    参数:
-        rho: np.array，顶点球坐标模长
-        N: int，目标分 bin 数
-        low_q, high_q: float，去除尾部稀疏点的分位数
-        vertices: np.array，顶点坐标
-        faces: np.array，面片索引
-    
-    返回:
-        final_bin: list of list，每个 bin 内的原始索引
-        bin_rho_min: list，每个 bin 的最小 rho
-        bin_rho_max: list，每个 bin 的最大 rho
-    """
-    # 1️⃣ 计算密集区间
-    dense_r_min, dense_r_max = np.quantile(rho, [low_q, high_q])
-    mask_dense = (rho >= dense_r_min) & (rho <= dense_r_max)
-    r_dense = rho[mask_dense]
-    idx_dense = np.where(mask_dense)[0]
-    
-    if len(r_dense) < 10:  # 需要足够的样本
-        return equal_frequency_binning(rho, N, low_q, high_q)
-    
-    # 2️⃣ 计算曲率
-    curvature = calculate_curvature(vertices, faces)
-    curvature_dense = curvature[mask_dense]
-    
-    # 归一化曲率到[0,1]范围
-    curvature_min = np.min(curvature_dense)
-    curvature_max = np.max(curvature_dense)
-    if curvature_max > curvature_min:
-        curvature_norm = (curvature_dense - curvature_min) / (curvature_max - curvature_min)
-    else:
-        # 如果曲率全部相同，则使用等频分bin
-        return equal_frequency_binning(rho, N, low_q, high_q)
-    
-    # 3️⃣ 根据曲率加权的密度定义bin边界
-    # 曲率越大，分配的bin越多（更精细）
-    weights = 1.0 + 2.0 * curvature_norm  # 权重范围[1,3]
-    
-    # 对rho进行排序
-    sorted_indices = np.argsort(r_dense)
-    sorted_r = r_dense[sorted_indices]
-    sorted_weights = weights[sorted_indices]
-    sorted_idx = idx_dense[sorted_indices]
-    
-    # 计算累积权重
-    cum_weights = np.cumsum(sorted_weights)
-    total_weight = cum_weights[-1]
-    
-    # 4️⃣ 根据累积权重等分N个bin
-    final_bin = [[] for _ in range(N)]
-    bin_rho_min = []
-    bin_rho_max = []
-    
-    # 计算每个bin的权重边界
-    weight_per_bin = total_weight / N
-    
-    start_idx = 0
-    for i in range(N):
-        target_weight = (i + 1) * weight_per_bin
-        
-        if i == N - 1:
-            # 最后一个bin包含所有剩余点
-            end_idx = len(sorted_r)
-        else:
-            # 找到累积权重刚好超过目标权重的位置
-            end_idx = np.searchsorted(cum_weights, target_weight, side='right')
-        
-        # 将这个范围内的点分配到当前bin
-        bin_indices = sorted_idx[start_idx:end_idx].tolist()
-        final_bin[i] = bin_indices
-        
-        if len(bin_indices) > 0:
-            bin_rho_min.append(float(np.min(rho[bin_indices])))
-            bin_rho_max.append(float(np.max(rho[bin_indices])))
-        else:
-            # 处理空bin
-            bin_min = sorted_r[start_idx] if start_idx < len(sorted_r) else dense_r_min
-            bin_max = sorted_r[min(end_idx, len(sorted_r)-1)] if end_idx > 0 else dense_r_max
-            bin_rho_min.append(float(bin_min))
-            bin_rho_max.append(float(bin_max))
-        
-        start_idx = end_idx
-    
-    return rho, final_bin, bin_rho_min, bin_rho_max
 
 
 def equal_width_binning(rho, N=256, low_q=0.05, high_q=0.95):
@@ -255,131 +110,10 @@ def equal_width_binning(rho, N=256, low_q=0.05, high_q=0.95):
     return rho, final_bin, bin_rho_min, bin_rho_max
 
 
-def equal_frequency_binning(rho, N=256, low_q=0.05, high_q=0.95):
-    """
-    等频分 bin（每个bin包含相近数量的顶点）
-    
-    参数:
-        rho: np.array，顶点球坐标模长
-        N: int，目标分 bin 数
-        low_q, high_q: float，去除尾部稀疏点的分位数
-    
-    返回:
-        final_bin: list of list，每个 bin 内的原始索引
-        bin_rho_min: list，每个 bin 的最小 rho
-        bin_rho_max: list，每个 bin 的最大 rho
-    """
-    # 1️⃣ 计算密集区间
-    dense_r_min, dense_r_max = np.quantile(rho, [low_q, high_q])
-    mask_dense = (rho >= dense_r_min) & (rho <= dense_r_max)
-    r_dense = rho[mask_dense]
-    idx_dense = np.where(mask_dense)[0]
-
-    # 2️⃣ 排序，等频分 bin
-    sorted_order = np.argsort(r_dense)
-    sorted_r = r_dense[sorted_order]
-    sorted_idx = idx_dense[sorted_order]
-
-    pts_per_bin = len(sorted_r) // N
-    remainder = len(sorted_r) % N
-
-    final_bin = []
-    bin_rho_min = []
-    bin_rho_max = []
-
-    start = 0
-    for i in range(N):
-        end = start + pts_per_bin + (1 if i < remainder else 0)
-        indices = sorted_idx[start:end].tolist()
-        if len(indices) == 0:
-            # 安全兜底
-            indices = []
-        final_bin.append(indices)
-        if len(indices) > 0:
-            bin_rho_min.append(float(np.min(rho[indices])))
-            bin_rho_max.append(float(np.max(rho[indices])))
-        else:
-            bin_rho_min.append(float(sorted_r[start]) if start < len(sorted_r) else dense_r_min)
-            bin_rho_max.append(float(sorted_r[start]) if start < len(sorted_r) else dense_r_max)
-        start = end
-
-    return rho, final_bin, bin_rho_min, bin_rho_max
 
 
-def kde_adaptive_binning(rho, N=256, low_q=0.05, high_q=0.95):
-    """
-    基于核密度估计(KDE)的自适应分bin
-    
-    参数:
-        rho: np.array，顶点球坐标模长
-        N: int，目标分 bin 数
-        low_q, high_q: float，去除尾部稀疏点的分位数
-    
-    返回:
-        final_bin: list of list，每个 bin 内的原始索引
-        bin_rho_min: list，每个 bin 的最小 rho
-        bin_rho_max: list，每个 bin 的最大 rho
-    """
-    from scipy.stats import gaussian_kde
-    
-    # 1️⃣ 计算密集区间
-    dense_r_min, dense_r_max = np.quantile(rho, [low_q, high_q])
-    mask_dense = (rho >= dense_r_min) & (rho <= dense_r_max)
-    r_dense = rho[mask_dense]
-    idx_dense = np.where(mask_dense)[0]
-    
-    if len(r_dense) < 10:  # KDE需要足够的样本
-        return equal_frequency_binning(rho, N, low_q, high_q)
-    
-    # 2️⃣ 计算KDE
-    try:
-        kde = gaussian_kde(r_dense)
-        
-        # 3️⃣ 根据密度定义bin边界
-        # 在密集区间内均匀采样点
-        x_eval = np.linspace(dense_r_min, dense_r_max, 1000)
-        density = kde(x_eval)
-        
-        # 计算累积密度
-        cum_density = np.cumsum(density)
-        cum_density = cum_density / cum_density[-1]  # 归一化到[0,1]
-        
-        # 根据累积密度等分N个bin
-        bin_edges = np.zeros(N+1)
-        bin_edges[0] = dense_r_min
-        bin_edges[-1] = dense_r_max
-        
-        for i in range(1, N):
-            # 找到累积密度为i/N的点
-            target = i / N
-            idx = np.argmin(np.abs(cum_density - target))
-            bin_edges[i] = x_eval[idx]
-    except Exception as e:
-        print(f"KDE计算失败: {str(e)}，回退到等频分bin")
-        return equal_frequency_binning(rho, N, low_q, high_q)
-    
-    # 4️⃣ 根据bin边界分配点
-    final_bin = [[] for _ in range(N)]
-    for i, (r, idx) in enumerate(zip(r_dense, idx_dense)):
-        # 找到点所在的bin
-        bin_idx = np.searchsorted(bin_edges, r) - 1
-        bin_idx = max(0, min(bin_idx, N-1))  # 确保索引在有效范围内
-        final_bin[bin_idx].append(idx)
-    
-    # 5️⃣ 计算每个bin的最小最大值
-    bin_rho_min = []
-    bin_rho_max = []
-    for i in range(N):
-        indices = final_bin[i]
-        if len(indices) > 0:
-            bin_rho_min.append(float(np.min(rho[indices])))
-            bin_rho_max.append(float(np.max(rho[indices])))
-        else:
-            # 空bin处理
-            bin_rho_min.append(float(bin_edges[i]))
-            bin_rho_max.append(float(bin_edges[i+1]))
-    
-    return rho, final_bin, bin_rho_min, bin_rho_max
+
+
 
 
 def normalize_bin_rho(rho_bin, bin_min, bin_max):
@@ -556,63 +290,3 @@ def caculate_hausdorff(vertices_original, vertices_watermarked):
 
     hausdorff_distance = max(np.max(distances_original_to_watermarked), np.max(distances_watermarked_to_original))
     return hausdorff_distance
-
-def geometric_median(vertices, weights=None, eps=1e-6, max_iter=200, tol=1e-6):
-    """
-    Compute geometric median (Weiszfeld algorithm) for points `vertices`.
-    - vertices: np.ndarray, shape (N, d)
-    - weights: optional array shape (N,), non-negative; if None, equal weights used
-    - eps: small regularization to avoid division by zero (used only to detect exact matches)
-    - max_iter: maximum iterations
-    - tol: convergence tolerance on change in position (L2 norm)
-    Returns: np.ndarray shape (d,)
-    """
-    vertices = np.asarray(vertices, dtype=float)
-    if vertices.ndim != 2:
-        raise ValueError("vertices must be 2D array shape (N,d)")
-
-    N, d = vertices.shape
-    if N == 0:
-        raise ValueError("empty vertex set")
-
-    if weights is None:
-        w = np.ones(N, dtype=float)
-    else:
-        w = np.asarray(weights, dtype=float)
-        if w.shape[0] != N:
-            raise ValueError("weights length must equal number of vertices")
-        if np.any(w < 0):
-            raise ValueError("weights must be non-negative")
-
-    # Good initialization: use weighted mean (fast) -- better than random
-    y = np.sum(vertices * w[:, None], axis=0) / np.sum(w)
-
-    for it in range(max_iter):
-        # distances from current estimate to each point
-        diff = vertices - y  # (N, d)
-        dist = np.linalg.norm(diff, axis=1)  # (N,)
-
-        # Check if y coincides (within eps) with one of the vertices
-        zero_mask = dist < eps
-        if np.any(zero_mask):
-            # If y is exactly at a data point v_j, that data point is the geometric median
-            # for positive weights and all others nonnegative; return it (weighted choice)
-            # But safer: return the weighted average of coincident points
-            return np.sum(vertices[zero_mask] * w[zero_mask, None], axis=0) / np.sum(w[zero_mask])
-
-        # Compute Weiszfeld numerator and denominator: vectorized, guarded against zeros
-        inv_dist = w / dist  # (N,)
-        numerator = np.sum(vertices * inv_dist[:, None], axis=0)  # (d,)
-        denominator = np.sum(inv_dist)
-
-        y_new = numerator / denominator
-
-        # Convergence check
-        if np.linalg.norm(y_new - y) < tol:
-            return y_new
-
-        y = y_new
-
-    # If not converged, return last estimate (optionally fallback to mean)
-    # You may want to log a warning in production code
-    return y

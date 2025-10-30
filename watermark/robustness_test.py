@@ -350,16 +350,16 @@ if __name__ == "__main__":
         # {"func": attack_rotation, "params": {"angles": 45}},
         {"func": attack_scaling, "params": {"scale": 1.5}},
         {"func": attack_translation, "params": {"offset": (0.5, -0.3, 0.2)}},
-        {"func": attack_clipping, "params": {"ratio": 0.1}},
-        {"func": attack_clipping, "params": {"ratio": 0.2}},
-        {"func": attack_clipping, "params": {"ratio": 0.3}},
+        # {"func": attack_clipping, "params": {"ratio": 0.1}},
+        # {"func": attack_clipping, "params": {"ratio": 0.2}},
+        # {"func": attack_clipping, "params": {"ratio": 0.3}},
         {"func": attack_noise, "params": {"sigma_ratio": 0.001}},
         {"func": attack_smoothing, "params": {"iterations": 5, "lambda_": 0.03}},
         {"func": attack_simplification, "params": {"reduction": 0.5}},
         {"func": attack_vertex_reordering, "params": {}}
     ]
     
-    watermarked_obj = "static/results/watermarked_models/Tank_watermarked_equal_width.obj"
+    watermarked_obj = "static/results/watermarked_models/aobin_watermarked.obj"
     output_path = "static/results/attacted_models"
     original_watermark_string = "gzhu123321"  # 原始水印字符串
     
