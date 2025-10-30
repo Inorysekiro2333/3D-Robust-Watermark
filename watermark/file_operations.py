@@ -10,6 +10,9 @@ import os
 def read_obj_vertices(obj_path):
     """直接从OBJ文件解析顶点，确保与原始顶点数完全一致（不合并重复顶点）"""
     vertices = []
+    # 输出顶点个数
+    print(f"读取{obj_path}，共{sum(1 for line in open(obj_path, 'r', encoding='utf-8') if line.startswith('v '))}个顶点")
+
     with open(obj_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()

@@ -359,7 +359,7 @@ if __name__ == "__main__":
         {"func": attack_vertex_reordering, "params": {}}
     ]
     
-    watermarked_obj = "static/results/watermarked_models/long_watermarked_equal_width.obj"
+    watermarked_obj = "static/results/watermarked_models/Tank_watermarked_equal_width.obj"
     output_path = "static/results/attacted_models"
     original_watermark_string = "gzhu123321"  # 原始水印字符串
     

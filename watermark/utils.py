@@ -31,7 +31,58 @@ def spherical_to_cartesian(rho, theta, phi, centroid):
     return np.column_stack((x, y, z))
 
 
-def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_frequency"):
+def calculate_curvature(vertices, faces):
+    """
+    计算网格模型顶点的平均曲率
+    
+    参数:
+        vertices: np.array，顶点坐标
+        faces: np.array，面片索引
+    
+    返回:
+        curvature: np.array，每个顶点的平均曲率估计值
+    """
+    # 初始化曲率数组
+    num_vertices = vertices.shape[0]
+    curvature = np.zeros(num_vertices)
+    
+    # 计算每个顶点的相邻顶点
+    neighbors = [[] for _ in range(num_vertices)]
+    for face in faces:
+        for i in range(len(face)):
+            v1 = face[i]
+            v2 = face[(i + 1) % len(face)]
+            neighbors[v1].append(v2)
+            neighbors[v2].append(v1)
+    
+    # 去除重复的邻居顶点
+    for i in range(num_vertices):
+        neighbors[i] = list(set(neighbors[i]))
+    
+    # 计算每个顶点的平均曲率
+    for i in range(num_vertices):
+        if not neighbors[i]:
+            continue
+        
+        # 计算顶点与其邻居的平均距离
+        p = vertices[i]
+        neighbor_vertices = vertices[neighbors[i]]
+        
+        # 计算顶点到邻居的向量
+        vectors = neighbor_vertices - p
+        
+        # 计算向量的平均长度
+        avg_distance = np.mean(np.linalg.norm(vectors, axis=1))
+        
+        # 计算局部曲率估计值（基于拉普拉斯算子）
+        if avg_distance > 0:
+            laplacian = np.mean(vectors, axis=0) / avg_distance
+            curvature[i] = np.linalg.norm(laplacian)
+    
+    return curvature
+
+
+def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_frequency", vertices=None, faces=None):
     """
     自适应分 bin 方法
     
@@ -39,7 +90,9 @@ def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_f
         rho: np.array，顶点球坐标模长
         N: int，目标分 bin 数
         low_q, high_q: float，去除尾部稀疏点的分位数
-        method: str，分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计)
+        method: str，分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计), "curvature"(曲率加权)
+        vertices: np.array，顶点坐标，仅在method="curvature"时需要
+        faces: np.array，面片索引，仅在method="curvature"时需要
     
     返回:
         final_bin: list of list，每个 bin 内的原始索引
@@ -57,8 +110,102 @@ def adaptive_partition_bins(rho, N=256, low_q=0.05, high_q=0.95, method="equal_f
         return equal_frequency_binning(rho, N, low_q, high_q)
     elif method == "kde":
         return kde_adaptive_binning(rho, N, low_q, high_q)
+    elif method == "curvature":
+        if vertices is None or faces is None:
+            raise ValueError("曲率加权分bin方法需要提供vertices和faces参数")
+        return curvature_weighted_binning(rho, N, low_q, high_q, vertices, faces)
     else:
-        raise ValueError(f"不支持的分bin方法: {method}，可选: equal_width, equal_frequency, kde")
+        raise ValueError(f"不支持的分bin方法: {method}，可选: equal_width, equal_frequency, kde, curvature")
+
+
+def curvature_weighted_binning(rho, N=256, low_q=0.05, high_q=0.95, vertices=None, faces=None):
+    """
+    基于曲率加权的自适应分bin方法
+    
+    参数:
+        rho: np.array，顶点球坐标模长
+        N: int，目标分 bin 数
+        low_q, high_q: float，去除尾部稀疏点的分位数
+        vertices: np.array，顶点坐标
+        faces: np.array，面片索引
+    
+    返回:
+        final_bin: list of list，每个 bin 内的原始索引
+        bin_rho_min: list，每个 bin 的最小 rho
+        bin_rho_max: list，每个 bin 的最大 rho
+    """
+    # 1️⃣ 计算密集区间
+    dense_r_min, dense_r_max = np.quantile(rho, [low_q, high_q])
+    mask_dense = (rho >= dense_r_min) & (rho <= dense_r_max)
+    r_dense = rho[mask_dense]
+    idx_dense = np.where(mask_dense)[0]
+    
+    if len(r_dense) < 10:  # 需要足够的样本
+        return equal_frequency_binning(rho, N, low_q, high_q)
+    
+    # 2️⃣ 计算曲率
+    curvature = calculate_curvature(vertices, faces)
+    curvature_dense = curvature[mask_dense]
+    
+    # 归一化曲率到[0,1]范围
+    curvature_min = np.min(curvature_dense)
+    curvature_max = np.max(curvature_dense)
+    if curvature_max > curvature_min:
+        curvature_norm = (curvature_dense - curvature_min) / (curvature_max - curvature_min)
+    else:
+        # 如果曲率全部相同，则使用等频分bin
+        return equal_frequency_binning(rho, N, low_q, high_q)
+    
+    # 3️⃣ 根据曲率加权的密度定义bin边界
+    # 曲率越大，分配的bin越多（更精细）
+    weights = 1.0 + 2.0 * curvature_norm  # 权重范围[1,3]
+    
+    # 对rho进行排序
+    sorted_indices = np.argsort(r_dense)
+    sorted_r = r_dense[sorted_indices]
+    sorted_weights = weights[sorted_indices]
+    sorted_idx = idx_dense[sorted_indices]
+    
+    # 计算累积权重
+    cum_weights = np.cumsum(sorted_weights)
+    total_weight = cum_weights[-1]
+    
+    # 4️⃣ 根据累积权重等分N个bin
+    final_bin = [[] for _ in range(N)]
+    bin_rho_min = []
+    bin_rho_max = []
+    
+    # 计算每个bin的权重边界
+    weight_per_bin = total_weight / N
+    
+    start_idx = 0
+    for i in range(N):
+        target_weight = (i + 1) * weight_per_bin
+        
+        if i == N - 1:
+            # 最后一个bin包含所有剩余点
+            end_idx = len(sorted_r)
+        else:
+            # 找到累积权重刚好超过目标权重的位置
+            end_idx = np.searchsorted(cum_weights, target_weight, side='right')
+        
+        # 将这个范围内的点分配到当前bin
+        bin_indices = sorted_idx[start_idx:end_idx].tolist()
+        final_bin[i] = bin_indices
+        
+        if len(bin_indices) > 0:
+            bin_rho_min.append(float(np.min(rho[bin_indices])))
+            bin_rho_max.append(float(np.max(rho[bin_indices])))
+        else:
+            # 处理空bin
+            bin_min = sorted_r[start_idx] if start_idx < len(sorted_r) else dense_r_min
+            bin_max = sorted_r[min(end_idx, len(sorted_r)-1)] if end_idx > 0 else dense_r_max
+            bin_rho_min.append(float(bin_min))
+            bin_rho_max.append(float(bin_max))
+        
+        start_idx = end_idx
+    
+    return rho, final_bin, bin_rho_min, bin_rho_max
 
 
 def equal_width_binning(rho, N=256, low_q=0.05, high_q=0.95):

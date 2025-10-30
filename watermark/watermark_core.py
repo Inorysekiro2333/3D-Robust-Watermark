@@ -5,7 +5,7 @@
 
 import time
 import numpy as np
-from .file_operations import read_obj_vertices, save_obj_with_new_vertices, create_obj_str_with_new_vertices
+from .file_operations import read_obj_vertices, read_obj_faces, save_obj_with_new_vertices, create_obj_str_with_new_vertices
 from .utils import (
     calculate_rmse, cartesian_to_spherical, spherical_to_cartesian, adaptive_partition_bins,
     normalize_bin_rho, denormalize_bin_rho, calculate_k_coefficient,
@@ -22,7 +22,7 @@ def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equ
         original_obj_path: str, 原始3D模型路径
         watermark: np.array, 水印比特序列
         N: int, 水印比特数
-        binning_method: str, 分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计)
+        binning_method: str, 分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计), "curvature"(曲率加权)
     """
     start_time = time.time()
     print(f"开始水印嵌入，使用{binning_method}分bin方法...")
@@ -38,7 +38,16 @@ def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equ
     # centroid = geometric_median(vertices)
     rho, theta, phi = cartesian_to_spherical(vertices, centroid)
     try:
-        rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N, method=binning_method)
+        # 如果是曲率加权分bin方法，需要读取面片信息
+        if binning_method == "curvature":
+            faces = read_obj_faces(original_obj_path)
+            rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(
+                rho, N, method=binning_method, vertices=vertices, faces=faces
+            )
+        else:
+            rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(
+                rho, N, method=binning_method
+            )
         
         # 打印每个bin的顶点数统计，用于评估分bin效果
         bin_counts = [len(indices) for indices in bin_indices]
@@ -82,7 +91,7 @@ def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_widt
     参数:
         watermarked_obj_path: str, 带水印3D模型路径
         N: int, 水印比特数
-        binning_method: str, 分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计)
+        binning_method: str, 分bin方法，可选 "equal_width"(等宽), "equal_frequency"(等频), "kde"(核密度估计), "curvature"(曲率加权)
     """
     start_time = time.time()
     print(f"开始水印提取，使用{binning_method}分bin方法...")
@@ -93,7 +102,16 @@ def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_widt
     rho, _, _ = cartesian_to_spherical(vertices, centroid)
     
     try:
-        rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(rho, N, method=binning_method)
+        # 如果是曲率加权分bin方法，需要读取面片信息
+        if binning_method == "curvature":
+            faces = read_obj_faces(watermarked_obj_path)
+            rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(
+                rho, N, method=binning_method, vertices=vertices, faces=faces
+            )
+        else:
+            rho_adjusted, bin_indices, bin_rho_min, bin_rho_max = adaptive_partition_bins(
+                rho, N, method=binning_method
+            )
         
         # 打印每个bin的顶点数统计，用于评估分bin效果
         bin_counts = [len(indices) for indices in bin_indices]
@@ -143,9 +161,16 @@ if __name__ == "__main__":
     accuracy = np.mean(extracted == watermark) * 100 if len(extracted) == len(watermark) else 0.0
     print(f"提取准确率: {accuracy:.2f}%")
     
-    # 也可以尝试KDE自适应分bin
+    # 也可以尝试其他分bin方法
+    
+    # KDE自适应分bin
     # file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse = watermark_embedding(
-    #     "3D_models/aobin.obj", watermark, binning_method="kde"
+    #     "static/uploads/aobin.obj", watermark, binning_method="kde"
+    # )
+    
+    # 曲率加权分bin
+    # file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse = watermark_embedding(
+    #     "static/uploads/aobin.obj", watermark, binning_method="curvature"
     # )
     # print(f"原始文件名: {file_name}")
     # print(f"水印后文件名: {file_name_new}")
