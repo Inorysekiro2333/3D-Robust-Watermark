@@ -51,28 +51,135 @@ def attack_translation(obj_path, offset=(0.5, -0.3, 0.2), output_path=None):
     return output_path
 
 
+# def attack_clipping(obj_path, ratio=0.1, output_path=None):
+#     """裁剪攻击"""
+#     if output_path is None:
+#         base_name = os.path.splitext(obj_path)[0]
+#         output_path = f"{base_name}_clipped_{int(ratio*100)}.obj"
+    
+#     vertices, _, _ = read_obj_vertices(obj_path)
+#     if ratio <= 0:
+#         transformed_vertices = vertices
+#     else:
+#         ratio = min(max(ratio, 0.0), 1.0)
+#         z_min = np.min(vertices[:, 2])
+#         z_max = np.max(vertices[:, 2])
+#         threshold = z_min + (1.0 - ratio) * (z_max - z_min)
+#         clipped = vertices.copy()
+#         mask = clipped[:, 2] > threshold
+#         clipped[mask, 2] = threshold
+#         transformed_vertices = clipped
+    
+#     save_obj_with_new_vertices(obj_path, transformed_vertices, output_path)
+#     return output_path
+# --- 辅助函数 (Helper Functions) ---
+# 这些函数用于读写OBJ文件，使主函数可以独立运行。
+
+def read_obj_vertices_clipping(obj_path):
+    """从OBJ文件中读取顶点坐标"""
+    vertices = []
+    try:
+        with open(obj_path, 'r') as f:
+            for line in f:
+                if line.startswith('v '):
+                    parts = line.strip().split()
+                    # OBJ索引从1开始，但我们这里用0-based数组
+                    vertices.append([float(parts[1]), float(parts[2]), float(parts[3])])
+    except FileNotFoundError:
+        print(f"错误: 文件未找到 {obj_path}")
+        return np.array([])
+    return np.array(vertices)
+
+def read_obj_faces_clipping(obj_path):
+    """从OBJ文件中读取面片信息"""
+    faces = []
+    try:
+        with open(obj_path, 'r') as f:
+            for line in f:
+                if line.startswith('f '):
+                    parts = line.strip().split()
+                    # 处理 v/vt/vn 或 v//vn 格式，只取顶点索引
+                    face_indices = [int(p.split('/')[0]) - 1 for p in parts[1:]]
+                    faces.append(face_indices)
+    except FileNotFoundError:
+        print(f"错误: 文件未找到 {obj_path}")
+        return []
+    return faces
+
+def write_obj_clipping(output_path, vertices, faces):
+    """将顶点和面片写入OBJ文件"""
+    with open(output_path, 'w') as f:
+        # 写入顶点
+        for vertex in vertices:
+            f.write(f"v {vertex[0]} {vertex[1]} {vertex[2]}\n")
+        
+        # 写入面片
+        for face in faces:
+            # 将索引转换回1-based，并格式化为字符串
+            face_str = " ".join([str(idx + 1) for idx in face])
+            f.write(f"f {face_str}\n")
+    print(f"成功保存到: {output_path}")
+
+
+# --- 主要功能函数 ---
+
 def attack_clipping(obj_path, ratio=0.1, output_path=None):
-    """裁剪攻击"""
+    """
+    通过删除面片来执行裁剪攻击，同时保持顶点不变。
+
+    此函数计算一个沿 Z 轴的裁剪平面。任何完全或部分位于
+    该平面上方的面片都将被移除。顶点数组本身不被修改。
+
+    Args:
+        obj_path (str): 输入 OBJ 文件的路径。
+        ratio (float): 要从顶部裁剪的模型比例 (0.0 到 1.0)。
+                       例如，0.1 会移除 Z 值最高的 10% 区域内的所有面片。
+        output_path (str, optional): 保存修改后 OBJ 的路径。
+                                     如果为 None，则会生成一个默认名称。
+
+    Returns:
+        str: 保存后 OBJ 文件的路径。
+    """
+    # 1. 处理输出路径
     if output_path is None:
         base_name = os.path.splitext(obj_path)[0]
-        output_path = f"{base_name}_clipped_{int(ratio*100)}.obj"
+        output_path = f"{base_name}_faces_clipped_{int(ratio*100)}.obj"
     
-    vertices, _, _ = read_obj_vertices(obj_path)
+    # 2. 读取顶点和面片数据
+    vertices = read_obj_vertices_clipping(obj_path)
+    faces = read_obj_faces_clipping(obj_path)
+
+    if vertices.size == 0 or not faces:
+        print("输入文件无效或为空，无法进行攻击。")
+        return None
+
+    # 3. 处理边界情况
     if ratio <= 0:
-        transformed_vertices = vertices
+        # 如果裁剪比例为0，则不进行任何操作，直接保存原始数据
+        filtered_faces = faces
     else:
-        ratio = min(max(ratio, 0.0), 1.0)
+        # 4. 计算裁剪阈值
+        ratio = min(max(ratio, 0.0), 1.0)  # 确保 ratio 在 [0.0, 1.0] 区间
         z_min = np.min(vertices[:, 2])
         z_max = np.max(vertices[:, 2])
         threshold = z_min + (1.0 - ratio) * (z_max - z_min)
-        clipped = vertices.copy()
-        mask = clipped[:, 2] > threshold
-        clipped[mask, 2] = threshold
-        transformed_vertices = clipped
-    
-    save_obj_with_new_vertices(obj_path, transformed_vertices, output_path)
-    return output_path
+        
+        # 5. 核心逻辑：筛选面片
+        filtered_faces = []
+        for face in faces:
+            # 获取当前面片所有顶点的Z坐标
+            # vertices[face] 会根据face中的索引从vertices中取出对应的顶点
+            face_vertex_z_coords = vertices[face][:, 2]
+            
+            # 只有当面片的所有顶点Z坐标都小于等于阈值时，才保留该面片
+            if np.all(face_vertex_z_coords <= threshold):
+                filtered_faces.append(face)
 
+    # 6. 保存结果
+    # 顶点列表保持不变，但使用筛选后的面片列表
+    write_obj_clipping(output_path, vertices, filtered_faces)
+    
+    return output_path
 
 def attack_noise(obj_path, sigma_ratio=0.001, output_path=None):
     """噪声攻击"""
@@ -359,7 +466,7 @@ if __name__ == "__main__":
         {"func": attack_vertex_reordering, "params": {}}
     ]
     
-    watermarked_obj = "static/results/watermarked_models/long_watermarked_equal_width.obj"
+    watermarked_obj = "static/results/watermarked_models/shuitun_watermarked_equal_frequency.obj"
     output_path = "static/results/attacted_models"
     original_watermark_string = "gzhu123321"  # 原始水印字符串
     

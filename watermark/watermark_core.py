@@ -14,7 +14,7 @@ from .utils import (
 )
 
 
-def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equal_width"):
+def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equal_frequency"):
     """
     水印嵌入主函数
     
@@ -75,7 +75,7 @@ def watermark_embedding(original_obj_path, watermark, N=256, binning_method="equ
     
     return file_name, file_name_new, new_vertices, watermark, elapsed_time, rmse
 
-def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_width"):
+def watermark_extraction(watermarked_obj_path, N=256, binning_method="equal_frequency"):
     """
     水印提取主函数
     
